@@ -24,6 +24,7 @@ namespace DailyTasks.Forms
     {
         string? title;
         int? totalAmount;
+        int? ng;
         int? amountLeft;
         bool completed;
         DateTime? startTime;
@@ -61,6 +62,22 @@ namespace DailyTasks.Forms
                 }
             }
         }
+        public int? NG
+        {
+            get => ng;
+            set
+            {
+                if (value >= 0)
+                {
+                    ng = value;
+                }
+                else
+                {
+                    MessageBox.Show("Amount can only contain positive numbers!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
 
         public int? AmountLeft
         {
@@ -86,10 +103,11 @@ namespace DailyTasks.Forms
 
         internal TaskPriority Priority { get => priority; set => priority = value; }
 
-        public Task(string? title, int? totalAmount, int? amountLeft, bool completed, DateTime? startTime, TaskType taskType, TaskPriority priority)
+        public Task(string? title, int? totalAmount, int? ng, int? amountLeft, bool completed, DateTime? startTime, TaskType taskType, TaskPriority priority)
         {
             Title = title;
             TotalAmount = totalAmount;
+            NG = ng; 
             AmountLeft = amountLeft;
             Completed = completed;
             StartTime = startTime;
@@ -116,7 +134,7 @@ namespace DailyTasks.Forms
             {
                 amountLeft = totalAmount;
             }
-            return $"{title},{totalAmount},{amountLeft},{completed},{StartTime},{(int)taskType},{(int)priority}";
+            return $"{title},{totalAmount},{ng},{amountLeft},{completed},{StartTime},{(int)taskType},{(int)priority}";
         }
         public static Task[] Deserialize(string filename)
         {
@@ -125,7 +143,7 @@ namespace DailyTasks.Forms
             for (int i = 0; i < lines.Length; i++)
             {
                 string[] line = lines[i].Split(',');
-                tasks[i] = new Task(line[0], int.Parse(line[1]), int.Parse(line[2]), bool.Parse(line[3]), DateTime.Parse(line[4]), (TaskType)int.Parse(line[5]), (TaskPriority)int.Parse(line[6]));
+                tasks[i] = new Task(line[0], int.Parse(line[1]), int.Parse(line[2]), int.Parse(line[3]), bool.Parse(line[4]), DateTime.Parse(line[5]), (TaskType)int.Parse(line[6]), (TaskPriority)int.Parse(line[7]));
             }
             return tasks;
         }
@@ -136,7 +154,7 @@ namespace DailyTasks.Forms
             for (int i = 0; i < lines.Length; i++)
             {
                 string[] line = lines[i].Split(',');
-                tasks[i] = new Task(line[0], int.Parse(line[1]), int.Parse(line[2]), bool.Parse(line[3]), DateTime.Parse(line[4]), (TaskType)int.Parse(line[5]), (TaskPriority)int.Parse(line[6]));
+                tasks[i] = new Task(line[0], int.Parse(line[1]), int.Parse(line[2]), int.Parse(line[3]), bool.Parse(line[4]), DateTime.Parse(line[5]), (TaskType)int.Parse(line[6]), (TaskPriority)int.Parse(line[7]));
             }
             return tasks.Where(a =>a.StartTime!.Value.Day == DateTime.Today.Day).Sum(a => a.totalAmount);
         }
@@ -147,25 +165,25 @@ namespace DailyTasks.Forms
             for (int i = 0; i < lines.Length; i++)
             {
                 string[] line = lines[i].Split(',');
-                tasks[i] = new Task(line[0], int.Parse(line[1]), int.Parse(line[2]), bool.Parse(line[3]), DateTime.Parse(line[4]), (TaskType)int.Parse(line[5]), (TaskPriority)int.Parse(line[6]));
+                tasks[i] = new Task(line[0], int.Parse(line[1]), int.Parse(line[2]), int.Parse(line[3]), bool.Parse(line[4]), DateTime.Parse(line[5]), (TaskType)int.Parse(line[6]), (TaskPriority)int.Parse(line[7]));
             }
             return tasks.Where(a => a.StartTime!.Value.Day == DateTime.Today.Day).Sum(a => a.amountLeft);
         }
-        public static string? AlertNotification(string filename)
+        public static string? TotalNG(string filename)
         {
             string[] lines = File.ReadAllLines(filename, Encoding.UTF8).Skip(1).ToArray();
             Task[] tasks = new Task[lines.Length];
             for (int i = 0; i < lines.Length; i++)
             {
                 string[] line = lines[i].Split(',');
-                tasks[i] = new Task(line[0], int.Parse(line[1]), int.Parse(line[2]), bool.Parse(line[3]), DateTime.Parse(line[4]), (TaskType)int.Parse(line[5]), (TaskPriority)int.Parse(line[6]));
+                tasks[i] = new Task(line[0], int.Parse(line[1]), int.Parse(line[2]), int.Parse(line[3]), bool.Parse(line[4]), DateTime.Parse(line[5]), (TaskType)int.Parse(line[6]), (TaskPriority)int.Parse(line[7]));
             }
-            return tasks.Last(a => a.StartTime!.Value.Day <= DateTime.Today.Day).title;
+            return tasks.Where(a => a.StartTime!.Value.Day == DateTime.Today.Day).Sum(a => a.totalAmount) - tasks.Where(a => a.StartTime!.Value.Day == DateTime.Today.Day).Sum(a => a.ng) + "/" + tasks.Where(a => a.StartTime!.Value.Day == DateTime.Today.Day).Sum(a => a.ng);
         }
-        public static void Serialization(string filename, Task[] tasks)
+        public static void Serialize(string filename, Task[] tasks)
         {
             StreamWriter writer = new(filename, false, Encoding.UTF8);
-            writer.WriteLine("Task Title, Total Amount, Amount Left, Completed, Task Date Time, Task Type, Priority");
+            writer.WriteLine("Task Title, Total Amount, NG, Amount Left, Completed, Task Date Time, Task Type, Priority");
             foreach (Task item in tasks)
             {
                 writer.WriteLine(item.CSVFormat());
