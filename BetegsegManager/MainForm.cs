@@ -1,65 +1,167 @@
+using System.Text;
 using Vip.Notification;
+using System.Runtime.InteropServices;
 
 namespace DailyTasks.Forms
 {
     public partial class MainForm : Form
     {
-        readonly FileSystemWatcher watcher1 = new();
-        readonly FileSystemWatcher watcher2 = new();
-        readonly FileSystemWatcher watcher3 = new();
+        #region Initialize/Data
 
-        const string MainFile = "Daily Tasks.txt";
-        const string MainFolder = "Work related/";
-        const string UsersFile = "Users.txt";
+        FileSystemWatcher watcher1 = new();
+        FileSystemWatcher watcher2 = new();
+
+        readonly string MainFolder = $"Daily Tasks/";
+        readonly string DefaultFolder = $"Daily Tasks/Default/";
+        readonly string MainFile = $"Daily Tasks/Daily Tasks.csv";
+        readonly string ImageFolder = $"Daily Tasks/Images/";
+        readonly string UsersFile = $"Daily Tasks/Users.txt";
+
+        readonly Color Dark = Color.Black;
+        readonly Color Light = Color.White;
+
+        #endregion
 
         public MainForm()
         {
             InitializeComponent();
-
-            watcher1 = new FileSystemWatcher
-            {
-                Path = MainFile + Directory.GetCurrentDirectory(),
-                NotifyFilter = NotifyFilters.LastWrite,
-                Filter = MainFile
-            };
-            watcher1.Changed += new FileSystemEventHandler(OnChanged);
-            watcher1.EnableRaisingEvents = true;
-
-            watcher2 = new FileSystemWatcher
-            {
-                Path = MainFile + Directory.GetCurrentDirectory(),
-                NotifyFilter = NotifyFilters.LastWrite,
-                Filter = MainFile
-            };
-            watcher2.Changed += new FileSystemEventHandler(OnChanged2);
-            watcher2.EnableRaisingEvents = true;
-
-            watcher3 = new FileSystemWatcher
-            {
-                Path = MainFile + Directory.GetCurrentDirectory(),
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size,
-                Filter = "*.jpg"
-            };
-            watcher3.Changed += new FileSystemEventHandler(OnChanged3);
-            watcher3.EnableRaisingEvents = true;
+            new DropShadow().ApplyShadows(this);
+            FileToolStripMenuItem.ForeColor = Light;
+            ClipboardToolStripMenuItem.ForeColor = Light;
+            UserLabel.Text = Properties.Settings.Default.Username;
         }
 
         private void MainForm_Load(object sender, EventArgs e)
         {
-            if (File.Exists(MainFile))
-            {
-                foreach (User item in User.Deserialize(UsersFile))
-                {
+            //Ugly code
 
+            if (!Directory.Exists(MainFolder))
+            {
+                Directory.CreateDirectory(MainFolder);
+            }
+            if (!Directory.Exists(ImageFolder))
+            {
+                Directory.CreateDirectory(ImageFolder);
+            }
+            
+            try
+            {
+                Directory.CreateDirectory(DefaultFolder);
+
+                watcher2 = new FileSystemWatcher
+                {
+                    Path = ImageFolder,
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size,
+                    Filter = "*.jpg"
+                };
+                watcher2.Created += new FileSystemEventHandler(OnImageCreated);
+                watcher2.EnableRaisingEvents = true;
+                if (File.Exists(MainFile))
+                {
+                    RefreshListBox();
                 }
+                watcher1 = new FileSystemWatcher
+                {
+                    Path = MainFolder,
+                    NotifyFilter = NotifyFilters.LastWrite,
+                    Filter = "*.csv"
+                };
+                watcher1.Changed += new FileSystemEventHandler(OnChanged);
+                watcher1.EnableRaisingEvents = true;
+
+                if (File.Exists(UsersFile))
+                {
+                    foreach (User userItem in User.Deserialize(UsersFile))
+                    {
+                        ToolStripItem item = UsersToolStripMenuItem.DropDownItems.Add(userItem.UserName);
+                        item.Click += UserItem_Click;
+                    }
+                }
+                else
+                {
+                    switch (MessageBox.Show("Users file is corrupted or doesn't exist! Do you want to create a new one?", "Error", MessageBoxButtons.YesNo, MessageBoxIcon.Information))
+                    {
+                        case DialogResult.Yes:
+                            using (FileStream fs = File.Create(UsersFile))
+                            {
+                                char[] value = "Default\n".ToCharArray();
+                                fs.Write(Encoding.UTF8.GetBytes(value), 0, value.Length);
+                            }
+                            MessageBox.Show("File created!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            Application.Restart();
+                            break;
+                        case DialogResult.Cancel:
+                            Environment.Exit(0);
+                            break;
+                        case DialogResult.No:
+                            Environment.Exit(0);
+                            break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Application couldn't start", "Error" + ex, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        void RefreshListBox()
+        {
+            try
+            {
+                MainListBox.Items.Clear();
                 foreach (Task item in Task.Deserialize(MainFile))
                 {
                     MainListBox.Items.Add(item);
                     TodayAmountLabel.Text = $"Today's total: \n {Task.TotalSum(MainFile)}";
                     NotFinishedLabel.Text = $"Amount left: \n {Task.NotFinished(MainFile)}";
+                    NGLabel.Text = $"OK/NG:\n {Task.TotalNG(MainFile)}";
                 }
             }
+            catch (Exception ex)
+            {
+                throw new ArgumentException("ListBox can't be refreshed at this time.", "Error", ex);
+            }
         }
+
+        private void UserItem_Click(object? sender, EventArgs e)
+        {
+            UserLabel.Text = (sender! as ToolStripItem)!.Text;
+            Properties.Settings.Default.Username = UserLabel.Text;
+            Properties.Settings.Default.Save();
+            if (!Directory.Exists(MainFolder + (sender! as ToolStripItem)!.Text))
+            {
+                Directory.CreateDirectory(MainFolder + (sender! as ToolStripItem)!.Text);
+            }
+            
+        }
+
+        private void NewUserToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            AddUserForm form = new();
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                UsersToolStripMenuItem.DropDownItems.Add(form.User!.UserName);
+                StreamWriter writer = new(UsersFile, true, Encoding.UTF8);
+                writer.WriteLine(form.User.CSVFormat());
+                writer.Close();
+                Application.Restart();
+            }
+        }
+
+        void SaveChanges()
+        {
+            Task[] tasks = new Task[MainListBox.Items.Count];
+            int i = 0;
+            foreach (Task item in MainListBox.Items)
+            {
+                tasks[i] = item;
+                i++;
+            }
+            Task.Serialize(MainFile, tasks);
+        }
+
+        #region Main Buttons
 
         private void AddButton_Click(object sender, EventArgs e)
         {
@@ -112,31 +214,15 @@ namespace DailyTasks.Forms
             }
         }
 
-        void SaveChanges()
-        {
-            Task[] tasks = new Task[MainListBox.Items.Count];
-            int i = 0;
-            foreach (Task item in MainListBox.Items)
-            {
-                tasks[i] = item;
-                i++;
-            }
-            Task.Serialization(MainFile, tasks);
-        }
-
         private void OpenToolStripMenuItem_Click(object sender, EventArgs e)
         {
             CopyClipboard dialog = new();
-            WindowState = FormWindowState.Minimized;
+            Hide();
             dialog.ShowDialog();
-            WindowState = FormWindowState.Normal;
+            Application.Restart();
         }
 
-        private void EditToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            EditClipboardForm form = new();
-            form.ShowDialog();
-        }
+        #endregion
 
         #region Update UI / Threading
 
@@ -144,7 +230,7 @@ namespace DailyTasks.Forms
 
         private delegate void UpdateLabelDelegate2(string status);
 
-        private delegate void UpdateAlertDelegate(string alert);
+        private delegate void UpdateLabelDelegate3(string status);
 
         private delegate void UpdateImageDelegate(string alert);
 
@@ -162,21 +248,21 @@ namespace DailyTasks.Forms
         {
             if (NotFinishedLabel.InvokeRequired)
             {
-                Invoke(new UpdateLabelDelegate1(UpdateLabel2), new object[] { status });
+                Invoke(new UpdateLabelDelegate2(UpdateLabel2), new object[] { status });
                 return;
             }
 
             NotFinishedLabel.Text = status;
         }
-        private void UpdateAlert(string alert)
+        private void UpdateLabel3(string status)
         {
-            if (MainListBox.InvokeRequired)
+            if (NotFinishedLabel.InvokeRequired)
             {
-                Invoke(new UpdateAlertDelegate(UpdateAlert), new object[] { alert });
+                Invoke(new UpdateLabelDelegate3(UpdateLabel3), new object[] { status });
                 return;
             }
 
-            Alert.ShowInformation(alert);
+            NGLabel.Text = status;
         }
         private void ImageAlert(string alert)
         {
@@ -186,7 +272,7 @@ namespace DailyTasks.Forms
                 return;
             }
 
-            Alert.ShowSucess(alert);
+            Alert.ShowInformation(alert, 3000);
         }
         private void OnChanged(object sender, FileSystemEventArgs e)
         {
@@ -203,27 +289,11 @@ namespace DailyTasks.Forms
                 watcher1.EnableRaisingEvents = true;
             }
         }
-        private void OnChanged2(object sender, FileSystemEventArgs e)
+        private void OnImageCreated(object sender, FileSystemEventArgs e)
         {
             try
             {
                 watcher2.EnableRaisingEvents = false;
-
-                Thread procThread2 = new(Process2);
-
-                procThread2.Start();
-
-            }
-            finally
-            {
-                watcher2.EnableRaisingEvents = true;
-            }
-        }
-        private void OnChanged3(object sender, FileSystemEventArgs e)
-        {
-            try
-            {
-                watcher3.EnableRaisingEvents = false;
 
                 Thread procThread3 = new(Process3);
 
@@ -231,29 +301,39 @@ namespace DailyTasks.Forms
             }
             finally
             {
-                watcher3.EnableRaisingEvents = true;
+                watcher2.EnableRaisingEvents = true;
             }
             
         }
+
         // This is the actual method of the thread
         private void Process()
         {
             string label1 = $"Today's total: \n {Task.TotalSum(MainFile)}";
             string label2 = $"Amount left: \n {Task.NotFinished(MainFile)}";
+            string label3 = $"OK/NG: \n {Task.TotalNG(MainFile)}";
             UpdateLabel1(label1);
             UpdateLabel2(label2);
+            UpdateLabel3(label3);
         }
-        private void Process2()
+        public static FileInfo GetNewestFile(DirectoryInfo directory)
         {
-            string alert = $"New Task Added: {Task.AlertNotification(MainFile)}";
-            UpdateAlert(alert);
+            return directory.GetFiles()!
+                .Union(directory.GetDirectories().Select(d => GetNewestFile(d)))
+                .OrderByDescending(f => (f == null ? DateTime.MinValue : f.LastWriteTime))
+                .FirstOrDefault()!;
         }
-
         private void Process3()
         {
-            string alert = $"{Task.AlertNotification(MainFile)} sent an image";
+            FileInfo newestFile = GetNewestFile(new DirectoryInfo("Daily Tasks/Images/"));
+            if (!File.Exists(newestFile.FullName))
+            {
+                return;
+            }
+            string alert = $"{newestFile.Name.Split(" - ").FirstOrDefault()!} sent an image";
             ImageAlert(alert);
         }
+
         #endregion
 
         private void SendImageButton_Click(object sender, EventArgs e)
@@ -268,7 +348,7 @@ namespace DailyTasks.Forms
 
                     Bitmap bm = new(image);
 
-                    bm.Save(MainFolder + $"{Task.AlertNotification(MainFile)} - " + $"{DateTime.Now:MMdd-HH-mm}.jpg", System.Drawing.Imaging.ImageFormat.Jpeg);
+                    bm.Save(ImageFolder + $"{UserLabel.Text} - " + $"{DateTime.Now:MMdd-HH-mm-ss}.jpg", System.Drawing.Imaging.ImageFormat.Jpeg);
 
                     SendImageTimer.Start();
                     SendImageLabel.Text = "Success!";
@@ -286,9 +366,16 @@ namespace DailyTasks.Forms
             }
         }
 
-        private void ExitToolStripMenuItem_Click(object sender, EventArgs e)
+        #region Visuals
+
+        private void MinimizeButton_MouseHover(object sender, EventArgs e)
         {
-            Environment.Exit(0);
+            MinimizeButton.ForeColor = Dark;
+        }
+
+        private void MinimizeButton_MouseLeave(object sender, EventArgs e)
+        {
+            MinimizeButton.ForeColor = Color.White;
         }
 
         private void SendImageTimer_Tick(object sender, EventArgs e)
@@ -297,20 +384,68 @@ namespace DailyTasks.Forms
             SendImageLabel.Visible = false;
             GC.Collect();
         }
-        private void FileToolStripMenuItem_Click(object sender, EventArgs e)
-        {
 
+        private void EditToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            EditClipboardForm form = new();
+            form.ShowDialog();
         }
 
-        private void NewUserToolStripMenuItem_Click(object sender, EventArgs e)
+        private void ExitToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            AddUserForm form = new();
-            if (form.ShowDialog() == DialogResult.OK)
+            Environment.Exit(0);
+        }
+
+        private void ExitButton_Click(object sender, EventArgs e)
+        {
+            Environment.Exit(0);
+        }
+
+        private void MinimizeButton_Click(object sender, EventArgs e)
+        {
+            WindowState = FormWindowState.Minimized;
+        }
+        public const int WM_NCLBUTTONDOWN = 0xA1;
+        public const int HT_CAPTION = 0x2;
+
+        [DllImportAttribute("user32.dll")]
+        public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+        [DllImportAttribute("user32.dll")]
+        public static extern bool ReleaseCapture();
+
+        private void panel1_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
             {
-                Directory.CreateDirectory(MainFile + form!.User!.UserName!);
-                Directory.SetCurrentDirectory(MainFile + form!.User!.UserName!);
-                SaveChanges();
+                ReleaseCapture();
+                SendMessage(Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
             }
         }
+
+        private void FileToolStripMenuItem_DropDownOpened(object sender, EventArgs e)
+        {
+            FileToolStripMenuItem.ForeColor = Dark;
+            ClipboardToolStripMenuItem.ForeColor = Dark;
+        }
+
+        private void FileToolStripMenuItem_DropDownClosed(object sender, EventArgs e)
+        {
+            FileToolStripMenuItem.ForeColor = Light;
+            ClipboardToolStripMenuItem.ForeColor = Light;
+        }
+        private void ClipboardToolStripMenuItem_DropDownOpened(object sender, EventArgs e)
+        {
+            FileToolStripMenuItem.ForeColor = Dark;
+            ClipboardToolStripMenuItem.ForeColor = Dark;
+        }
+
+        private void ClipboardToolStripMenuItem_DropDownClosed(object sender, EventArgs e)
+        {
+            FileToolStripMenuItem.ForeColor = Light;
+            ClipboardToolStripMenuItem.ForeColor = Light;
+        }
+
+        #endregion
+
     }
 }
