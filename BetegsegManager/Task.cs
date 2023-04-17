@@ -178,7 +178,10 @@ namespace DailyTasks.Forms
                 string[] line = lines[i].Split(',');
                 tasks[i] = new Task(line[0], int.Parse(line[1]), int.Parse(line[2]), int.Parse(line[3]), bool.Parse(line[4]), DateTime.Parse(line[5]), (TaskType)int.Parse(line[6]), (TaskPriority)int.Parse(line[7]));
             }
-            return tasks.Where(a => a.StartTime!.Value.Day == DateTime.Today.Day).Sum(a => a.totalAmount) - tasks.Where(a => a.StartTime!.Value.Day == DateTime.Today.Day).Sum(a => a.ng) + "/" + tasks.Where(a => a.StartTime!.Value.Day == DateTime.Today.Day).Sum(a => a.ng);
+            var tasksList = tasks.Where(a => a.StartTime!.Value.Day == DateTime.Today.Day).ToList();
+            var totalAmount = tasksList.Sum(a => a.totalAmount);
+            var ng = tasksList.Sum(a => a.ng);
+            return totalAmount - ng + "/" + ng;
         }
         public static void Serialize(string filename, Task[] tasks)
         {
