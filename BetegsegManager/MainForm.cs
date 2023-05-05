@@ -1,6 +1,7 @@
+using DailyTasks.Forms.Classes;
+using DailyTasks.Forms.Forms;
+using DailyTasks.Notification;
 using System.Text;
-using Vip.Notification;
-using System.Runtime.InteropServices;
 
 namespace DailyTasks.Forms
 {
@@ -12,7 +13,6 @@ namespace DailyTasks.Forms
         FileSystemWatcher watcher2 = new();
 
         readonly string MainFolder = $"Daily Tasks/";
-        readonly string DefaultFolder = $"Daily Tasks/Default/";
         readonly string MainFile = $"Daily Tasks/Daily Tasks.csv";
         readonly string ImageFolder = $"Daily Tasks/Images/";
         readonly string UsersFile = $"Daily Tasks/Users.txt";
@@ -25,29 +25,23 @@ namespace DailyTasks.Forms
         public MainForm()
         {
             InitializeComponent();
-            new DropShadow().ApplyShadows(this);
             FileToolStripMenuItem.ForeColor = Light;
             ClipboardToolStripMenuItem.ForeColor = Light;
-            UserLabel.Text = Properties.Settings.Default.Username;
+            CurrentUserLabel.Text = Properties.Settings.Default.Username;
         }
 
         private void MainForm_Load(object sender, EventArgs e)
         {
-            //Ugly code
-
-            if (!Directory.Exists(MainFolder))
-            {
-                Directory.CreateDirectory(MainFolder);
-            }
-            if (!Directory.Exists(ImageFolder))
-            {
-                Directory.CreateDirectory(ImageFolder);
-            }
-            
             try
             {
-                Directory.CreateDirectory(DefaultFolder);
-
+                string[] directories = { MainFolder, ImageFolder };
+                foreach (string directory in directories)
+                {
+                    if (!Directory.Exists(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+                }
                 watcher2 = new FileSystemWatcher
                 {
                     Path = ImageFolder,
@@ -71,10 +65,15 @@ namespace DailyTasks.Forms
 
                 if (File.Exists(UsersFile))
                 {
+                    int i = 1;
                     foreach (User userItem in User.Deserialize(UsersFile))
                     {
                         ToolStripItem item = UsersToolStripMenuItem.DropDownItems.Add(userItem.UserName);
                         item.Click += UserItem_Click;
+                        Label label = (Label)this.Controls.Find("UserLabel" + i, true)[0];
+                        label.Text = userItem.UserName;
+                        i++;
+                        if (i > 6) break;
                     }
                 }
                 else
@@ -110,12 +109,13 @@ namespace DailyTasks.Forms
             try
             {
                 MainListBox.Items.Clear();
-                foreach (Task item in Task.Deserialize(MainFile))
+                foreach (DailyTask item in DailyTask.Deserialize(MainFile))
                 {
                     MainListBox.Items.Add(item);
-                    TodayAmountLabel.Text = $"Today's total: \n {Task.TotalSum(MainFile)}";
-                    NotFinishedLabel.Text = $"Amount left: \n {Task.NotFinished(MainFile)}";
-                    NGLabel.Text = $"OK/NG:\n {Task.TotalNG(MainFile)}";
+                    TodayAmountLabel1.Text = $"Today's total: \n {DailyTask.TotalSum(MainFile)}";
+                    ScrapDoubleLabel1.Text = $"Scrap/Double: \n {DailyTask.ScrapDouble(MainFile)}";
+                    AmountLeftLabel1.Text = $"Amount left: \n   {DailyTask.NotFinished(MainFile)}";
+                    NGLabel1.Text = $"OK/NG:\n {DailyTask.TotalNG(MainFile)}";
                 }
             }
             catch (Exception ex)
@@ -126,14 +126,9 @@ namespace DailyTasks.Forms
 
         private void UserItem_Click(object? sender, EventArgs e)
         {
-            UserLabel.Text = (sender! as ToolStripItem)!.Text;
-            Properties.Settings.Default.Username = UserLabel.Text;
+            CurrentUserLabel.Text = (sender! as ToolStripItem)!.Text;
+            Properties.Settings.Default.Username = CurrentUserLabel.Text;
             Properties.Settings.Default.Save();
-            if (!Directory.Exists(MainFolder + (sender! as ToolStripItem)!.Text))
-            {
-                Directory.CreateDirectory(MainFolder + (sender! as ToolStripItem)!.Text);
-            }
-            
         }
 
         private void NewUserToolStripMenuItem_Click(object sender, EventArgs e)
@@ -151,22 +146,21 @@ namespace DailyTasks.Forms
 
         void SaveChanges()
         {
-            Task[] tasks = new Task[MainListBox.Items.Count];
+            DailyTask[] tasks = new DailyTask[MainListBox.Items.Count];
             int i = 0;
-            foreach (Task item in MainListBox.Items)
+            foreach (DailyTask item in MainListBox.Items)
             {
                 tasks[i] = item;
                 i++;
             }
-            Task.Serialize(MainFile, tasks);
+            DailyTask.Serialize(MainFile, tasks);
         }
 
         #region Main Buttons
-
         private void AddButton_Click(object sender, EventArgs e)
         {
             TaskForm form = new();
-            if (form.ShowDialog()==DialogResult.OK)
+            if (form.ShowDialog() == DialogResult.OK)
             {
                 MainListBox.Items.Add(form.Task!);
                 SaveChanges();
@@ -179,7 +173,7 @@ namespace DailyTasks.Forms
             {
                 TaskForm form = new()
                 {
-                    Task = (Task)MainListBox.SelectedItem
+                    Task = (DailyTask)MainListBox.SelectedItem
                 };
                 if (form.ShowDialog() == DialogResult.OK)
                 {
@@ -204,7 +198,7 @@ namespace DailyTasks.Forms
             {
                 TaskForm form = new()
                 {
-                    Task = (Task)MainListBox.SelectedItem
+                    Task = (DailyTask)MainListBox.SelectedItem
                 };
                 if (form.ShowDialog() == DialogResult.OK)
                 {
@@ -214,14 +208,13 @@ namespace DailyTasks.Forms
             }
         }
 
-        private void OpenToolStripMenuItem_Click(object sender, EventArgs e)
+        private void OpenCBToolStripMenuItem_Click(object sender, EventArgs e)
         {
             CopyClipboard dialog = new();
             Hide();
             dialog.ShowDialog();
-            Application.Restart();
+            Show();
         }
-
         #endregion
 
         #region Update UI / Threading
@@ -236,43 +229,43 @@ namespace DailyTasks.Forms
 
         private void UpdateLabel1(string status)
         {
-            if (TodayAmountLabel.InvokeRequired)
+            if (TodayAmountLabel1.InvokeRequired)
             {
                 Invoke(new UpdateLabelDelegate1(UpdateLabel1), new object[] { status });
                 return;
             }
 
-            TodayAmountLabel.Text = status;
+            TodayAmountLabel1.Text = status;
         }
         private void UpdateLabel2(string status)
         {
-            if (NotFinishedLabel.InvokeRequired)
+            if (AmountLeftLabel1.InvokeRequired)
             {
                 Invoke(new UpdateLabelDelegate2(UpdateLabel2), new object[] { status });
                 return;
             }
 
-            NotFinishedLabel.Text = status;
+            AmountLeftLabel1.Text = status;
         }
         private void UpdateLabel3(string status)
         {
-            if (NotFinishedLabel.InvokeRequired)
+            if (AmountLeftLabel1.InvokeRequired)
             {
                 Invoke(new UpdateLabelDelegate3(UpdateLabel3), new object[] { status });
                 return;
             }
 
-            NGLabel.Text = status;
+            NGLabel1.Text = status;
         }
         private void ImageAlert(string alert)
         {
-            if (SendImageLabel.InvokeRequired)
+            if (ShareImageLabel.InvokeRequired)
             {
                 Invoke(new UpdateImageDelegate(ImageAlert), new object[] { alert });
                 return;
             }
 
-            Alert.ShowInformation(alert, 3000);
+            Alert.ShowInformation(alert, 5000);
         }
         private void OnChanged(object sender, FileSystemEventArgs e)
         {
@@ -303,15 +296,15 @@ namespace DailyTasks.Forms
             {
                 watcher2.EnableRaisingEvents = true;
             }
-            
+
         }
 
         // This is the actual method of the thread
         private void Process()
         {
-            string label1 = $"Today's total: \n {Task.TotalSum(MainFile)}";
-            string label2 = $"Amount left: \n {Task.NotFinished(MainFile)}";
-            string label3 = $"OK/NG: \n {Task.TotalNG(MainFile)}";
+            string label1 = $"Today's total: \n {DailyTask.TotalSum(MainFile)}";
+            string label2 = $"Amount left: \n {DailyTask.NotFinished(MainFile)}";
+            string label3 = $"OK/NG: \n {DailyTask.TotalNG(MainFile)}";
             UpdateLabel1(label1);
             UpdateLabel2(label2);
             UpdateLabel3(label3);
@@ -334,9 +327,10 @@ namespace DailyTasks.Forms
             ImageAlert(alert);
         }
 
+
         #endregion
 
-        private void SendImageButton_Click(object sender, EventArgs e)
+        private void ShareImageButton_Click(object sender, EventArgs e)
         {
             if (Clipboard.GetDataObject() != null)
             {
@@ -348,18 +342,18 @@ namespace DailyTasks.Forms
 
                     Bitmap bm = new(image);
 
-                    bm.Save(ImageFolder + $"{UserLabel.Text} - " + $"{DateTime.Now:MMdd-HH-mm-ss}.jpg", System.Drawing.Imaging.ImageFormat.Jpeg);
+                    bm.Save(ImageFolder + $"{CurrentUserLabel.Text} - " + $"{DateTime.Now:MMdd-HH-mm-ss}.jpg", System.Drawing.Imaging.ImageFormat.Jpeg);
 
-                    SendImageTimer.Start();
-                    SendImageLabel.Text = "Success!";
-                    SendImageLabel.Visible = true;
+                    ShareImageTimer.Start();
+                    ShareImageLabel.Text = "Success!";
+                    ShareImageLabel.Visible = true;
                     GC.Collect();
                 }
                 else
                 {
-                    SendImageTimer.Start();
-                    SendImageLabel.Text = "Error";
-                    SendImageLabel.Visible = true;
+                    ShareImageTimer.Start();
+                    ShareImageLabel.Text = "Error";
+                    ShareImageLabel.Visible = true;
                     MessageBox.Show("The Data In Clipboard is not as image format");
                     GC.Collect();
                 }
@@ -367,59 +361,17 @@ namespace DailyTasks.Forms
         }
 
         #region Visuals
-
-        private void MinimizeButton_MouseHover(object sender, EventArgs e)
+        private void ShareImageTimer_Tick(object sender, EventArgs e)
         {
-            MinimizeButton.ForeColor = Dark;
-        }
-
-        private void MinimizeButton_MouseLeave(object sender, EventArgs e)
-        {
-            MinimizeButton.ForeColor = Color.White;
-        }
-
-        private void SendImageTimer_Tick(object sender, EventArgs e)
-        {
-            SendImageTimer.Stop();
-            SendImageLabel.Visible = false;
+            ShareImageTimer.Stop();
+            ShareImageLabel.Visible = false;
             GC.Collect();
         }
 
-        private void EditToolStripMenuItem_Click(object sender, EventArgs e)
+        private void EditCBToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            EditClipboardForm form = new();
+            EditClipboard form = new();
             form.ShowDialog();
-        }
-
-        private void ExitToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            Environment.Exit(0);
-        }
-
-        private void ExitButton_Click(object sender, EventArgs e)
-        {
-            Environment.Exit(0);
-        }
-
-        private void MinimizeButton_Click(object sender, EventArgs e)
-        {
-            WindowState = FormWindowState.Minimized;
-        }
-        public const int WM_NCLBUTTONDOWN = 0xA1;
-        public const int HT_CAPTION = 0x2;
-
-        [DllImportAttribute("user32.dll")]
-        public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
-        [DllImportAttribute("user32.dll")]
-        public static extern bool ReleaseCapture();
-
-        private void panel1_MouseMove(object sender, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left)
-            {
-                ReleaseCapture();
-                SendMessage(Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
-            }
         }
 
         private void FileToolStripMenuItem_DropDownOpened(object sender, EventArgs e)
@@ -433,6 +385,7 @@ namespace DailyTasks.Forms
             FileToolStripMenuItem.ForeColor = Light;
             ClipboardToolStripMenuItem.ForeColor = Light;
         }
+
         private void ClipboardToolStripMenuItem_DropDownOpened(object sender, EventArgs e)
         {
             FileToolStripMenuItem.ForeColor = Dark;
