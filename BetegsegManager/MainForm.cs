@@ -1,6 +1,7 @@
 using DailyTasks.Forms.Classes;
 using DailyTasks.Forms.Forms;
 using DailyTasks.Notification;
+using System.ComponentModel;
 using System.Text;
 
 namespace DailyTasks.Forms
@@ -9,7 +10,6 @@ namespace DailyTasks.Forms
     {
         #region Initialize/Data
 
-        FileSystemWatcher watcher1 = new();
         FileSystemWatcher watcher2 = new();
 
         readonly string MainFolder = $"Daily Tasks/";
@@ -22,12 +22,32 @@ namespace DailyTasks.Forms
 
         #endregion
 
+        /*Weather
+            using System.Net;
+            using Newtonsoft.Json.Linq;
+
+            string apiKey = "YOUR_API_KEY";
+            string location = "Budapest";
+            string url = $"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={apiKey}";
+
+            using (WebClient client = new WebClient())
+            {
+                string json = client.DownloadString(url);
+                JObject data = JObject.Parse(json);
+
+                // Access data
+                double temperature = (double)data["main"]["temp"];
+                string description = (string)data["weather"][0]["description"];
+            }
+         */
+
         public MainForm()
         {
             InitializeComponent();
             FileToolStripMenuItem.ForeColor = Light;
             ClipboardToolStripMenuItem.ForeColor = Light;
             CurrentUserLabel.Text = Properties.Settings.Default.Username;
+            InitializeDataGridView();
         }
 
         private void MainForm_Load(object sender, EventArgs e)
@@ -54,26 +74,13 @@ namespace DailyTasks.Forms
                 {
                     RefreshListBox();
                 }
-                watcher1 = new FileSystemWatcher
-                {
-                    Path = MainFolder,
-                    NotifyFilter = NotifyFilters.LastWrite,
-                    Filter = "*.csv"
-                };
-                watcher1.Changed += new FileSystemEventHandler(OnChanged);
-                watcher1.EnableRaisingEvents = true;
 
                 if (File.Exists(UsersFile))
                 {
-                    int i = 1;
                     foreach (User userItem in User.Deserialize(UsersFile))
                     {
                         ToolStripItem item = UsersToolStripMenuItem.DropDownItems.Add(userItem.UserName);
                         item.Click += UserItem_Click;
-                        Label label = (Label)this.Controls.Find("UserLabel" + i, true)[0];
-                        label.Text = userItem.UserName;
-                        i++;
-                        if (i > 6) break;
                     }
                 }
                 else
@@ -100,8 +107,19 @@ namespace DailyTasks.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Application couldn't start", "Error" + ex, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("Application couldn't start" + ex, "Error", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
+        }
+
+        void InitializeDataGridView()
+        {
+            MainDataGridView.AutoGenerateColumns = false;
+            MainDataGridView.Columns.Add("Title", "User");
+            MainDataGridView.Columns.Add("TotalSum", "Total Sum");
+            MainDataGridView.Columns.Add("ScrapDouble", "Scrap/Double");
+            MainDataGridView.Columns.Add("OtherNGS", "Other NG");
+            MainDataGridView.Columns.Add("NotFinished", "Not Finished");
+            MainDataGridView.Columns.Add("TotalNG", "Total NG");
         }
 
         void RefreshListBox()
@@ -109,13 +127,29 @@ namespace DailyTasks.Forms
             try
             {
                 MainListBox.Items.Clear();
+                MainDataGridView.Rows.Clear();
+
+                var totalSumByTitle = DailyTask.TotalSumByTitle(MainFile);
+                var scrapDoubleByTitle = DailyTask.ScrapDoubleByTitle(MainFile);
+                var otherNGSByTitle = DailyTask.OtherNGSByTitle(MainFile);
+                var notFinishedByTitle = DailyTask.NotFinishedByTitle(MainFile);
+                var totalNGByTitle = DailyTask.TotalNGByTitle(MainFile);
+
+                foreach (var group in totalSumByTitle)
+                {
+                    string title = group.Title;
+                    int totalSum = group.TotalSum;
+                    int scrapDouble = scrapDoubleByTitle.FirstOrDefault(g => g.Title == title).ScrapDouble;
+                    int otherNGS = otherNGSByTitle.FirstOrDefault(g => g.Title == title).OtherNGS;
+                    int notFinished = notFinishedByTitle.FirstOrDefault(g => g.Title == title).NotFinished;
+                    int totalNG = totalNGByTitle.FirstOrDefault(g => g.Title == title).TotalNG;
+
+                    MainDataGridView.Rows.Add(title, totalSum, scrapDouble, otherNGS, notFinished, totalNG);
+                }
+
                 foreach (DailyTask item in DailyTask.Deserialize(MainFile))
                 {
                     MainListBox.Items.Add(item);
-                    TodayAmountLabel1.Text = $"Today's total: \n {DailyTask.TotalSum(MainFile)}";
-                    ScrapDoubleLabel1.Text = $"Scrap/Double: \n {DailyTask.ScrapDouble(MainFile)}";
-                    AmountLeftLabel1.Text = $"Amount left: \n   {DailyTask.NotFinished(MainFile)}";
-                    NGLabel1.Text = $"OK/NG:\n {DailyTask.TotalNG(MainFile)}";
                 }
             }
             catch (Exception ex)
@@ -155,6 +189,7 @@ namespace DailyTasks.Forms
             }
             DailyTask.Serialize(MainFile, tasks);
         }
+        
 
         #region Main Buttons
         private void AddButton_Click(object sender, EventArgs e)
@@ -164,6 +199,7 @@ namespace DailyTasks.Forms
             {
                 MainListBox.Items.Add(form.Task!);
                 SaveChanges();
+                RefreshListBox();
             }
         }
 
@@ -179,6 +215,7 @@ namespace DailyTasks.Forms
                 {
                     MainListBox.Items[MainListBox.SelectedIndex] = MainListBox.SelectedItem!;
                     SaveChanges();
+                    RefreshListBox();
                 }
             }
         }
@@ -189,6 +226,7 @@ namespace DailyTasks.Forms
             {
                 MainListBox.Items.RemoveAt(MainListBox.SelectedIndex);
                 SaveChanges();
+                RefreshListBox();
             }
         }
 
@@ -204,6 +242,7 @@ namespace DailyTasks.Forms
                 {
                     MainListBox.Items[MainListBox.SelectedIndex] = MainListBox.SelectedItem!;
                     SaveChanges();
+                    RefreshListBox();
                 }
             }
         }
@@ -217,46 +256,11 @@ namespace DailyTasks.Forms
         }
         #endregion
 
-        #region Update UI / Threading
-
-        private delegate void UpdateLabelDelegate1(string status);
-
-        private delegate void UpdateLabelDelegate2(string status);
-
-        private delegate void UpdateLabelDelegate3(string status);
+        #region Share Image Function / Threading
 
         private delegate void UpdateImageDelegate(string alert);
 
-        private void UpdateLabel1(string status)
-        {
-            if (TodayAmountLabel1.InvokeRequired)
-            {
-                Invoke(new UpdateLabelDelegate1(UpdateLabel1), new object[] { status });
-                return;
-            }
 
-            TodayAmountLabel1.Text = status;
-        }
-        private void UpdateLabel2(string status)
-        {
-            if (AmountLeftLabel1.InvokeRequired)
-            {
-                Invoke(new UpdateLabelDelegate2(UpdateLabel2), new object[] { status });
-                return;
-            }
-
-            AmountLeftLabel1.Text = status;
-        }
-        private void UpdateLabel3(string status)
-        {
-            if (AmountLeftLabel1.InvokeRequired)
-            {
-                Invoke(new UpdateLabelDelegate3(UpdateLabel3), new object[] { status });
-                return;
-            }
-
-            NGLabel1.Text = status;
-        }
         private void ImageAlert(string alert)
         {
             if (ShareImageLabel.InvokeRequired)
@@ -267,28 +271,14 @@ namespace DailyTasks.Forms
 
             Alert.ShowInformation(alert, 5000);
         }
-        private void OnChanged(object sender, FileSystemEventArgs e)
-        {
-            try
-            {
-                watcher1.EnableRaisingEvents = false;
-
-                Thread procThread = new(Process);
-
-                procThread.Start();
-            }
-            finally
-            {
-                watcher1.EnableRaisingEvents = true;
-            }
-        }
+        
         private void OnImageCreated(object sender, FileSystemEventArgs e)
         {
             try
             {
                 watcher2.EnableRaisingEvents = false;
 
-                Thread procThread3 = new(Process3);
+                Thread procThread3 = new(Process);
 
                 procThread3.Start();
             }
@@ -298,17 +288,6 @@ namespace DailyTasks.Forms
             }
 
         }
-
-        // This is the actual method of the thread
-        private void Process()
-        {
-            string label1 = $"Today's total: \n {DailyTask.TotalSum(MainFile)}";
-            string label2 = $"Amount left: \n {DailyTask.NotFinished(MainFile)}";
-            string label3 = $"OK/NG: \n {DailyTask.TotalNG(MainFile)}";
-            UpdateLabel1(label1);
-            UpdateLabel2(label2);
-            UpdateLabel3(label3);
-        }
         public static FileInfo GetNewestFile(DirectoryInfo directory)
         {
             return directory.GetFiles()!
@@ -316,7 +295,8 @@ namespace DailyTasks.Forms
                 .OrderByDescending(f => (f == null ? DateTime.MinValue : f.LastWriteTime))
                 .FirstOrDefault()!;
         }
-        private void Process3()
+
+        private void Process()
         {
             FileInfo newestFile = GetNewestFile(new DirectoryInfo("Daily Tasks/Images/"));
             if (!File.Exists(newestFile.FullName))
@@ -399,6 +379,5 @@ namespace DailyTasks.Forms
         }
 
         #endregion
-
     }
 }
