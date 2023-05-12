@@ -1,8 +1,7 @@
-using DailyTasks.Forms.Classes;
+using System.Text;
 using DailyTasks.Forms.Forms;
 using DailyTasks.Notification;
-using System.ComponentModel;
-using System.Text;
+using DailyTasks.Forms.Classes;
 
 namespace DailyTasks.Forms
 {
@@ -22,7 +21,7 @@ namespace DailyTasks.Forms
 
         #endregion
 
-        /*Weather
+        /*TODO: Home Page with Weather
             using System.Net;
             using Newtonsoft.Json.Linq;
 
@@ -119,6 +118,7 @@ namespace DailyTasks.Forms
             MainDataGridView.Columns.Add("ScrapDouble", "Scrap/Double");
             MainDataGridView.Columns.Add("OtherNGS", "Other NG");
             MainDataGridView.Columns.Add("NotFinished", "Not Finished");
+            MainDataGridView.Columns.Add("TotalOK", "Total OK");
             MainDataGridView.Columns.Add("TotalNG", "Total NG");
         }
 
@@ -133,18 +133,20 @@ namespace DailyTasks.Forms
                 var scrapDoubleByTitle = DailyTask.ScrapDoubleByTitle(MainFile);
                 var otherNGSByTitle = DailyTask.OtherNGSByTitle(MainFile);
                 var notFinishedByTitle = DailyTask.NotFinishedByTitle(MainFile);
+                var totalOKByTitle = DailyTask.TotalOKByTitle(MainFile);
                 var totalNGByTitle = DailyTask.TotalNGByTitle(MainFile);
 
-                foreach (var group in totalSumByTitle)
+                foreach (var (Title, TotalSum) in totalSumByTitle)
                 {
-                    string title = group.Title;
-                    int totalSum = group.TotalSum;
+                    string title = Title;
+                    int totalSum = TotalSum;
                     int scrapDouble = scrapDoubleByTitle.FirstOrDefault(g => g.Title == title).ScrapDouble;
                     int otherNGS = otherNGSByTitle.FirstOrDefault(g => g.Title == title).OtherNGS;
                     int notFinished = notFinishedByTitle.FirstOrDefault(g => g.Title == title).NotFinished;
+                    int totalOK = totalOKByTitle.FirstOrDefault(g => g.Title == title).TotalOK;
                     int totalNG = totalNGByTitle.FirstOrDefault(g => g.Title == title).TotalNG;
 
-                    MainDataGridView.Rows.Add(title, totalSum, scrapDouble, otherNGS, notFinished, totalNG);
+                    MainDataGridView.Rows.Add(title, totalSum, scrapDouble, otherNGS, notFinished, totalOK, totalNG);
                 }
 
                 foreach (DailyTask item in DailyTask.Deserialize(MainFile))
@@ -189,7 +191,6 @@ namespace DailyTasks.Forms
             }
             DailyTask.Serialize(MainFile, tasks);
         }
-        
 
         #region Main Buttons
         private void AddButton_Click(object sender, EventArgs e)
@@ -250,9 +251,9 @@ namespace DailyTasks.Forms
         private void OpenCBToolStripMenuItem_Click(object sender, EventArgs e)
         {
             CopyClipboard dialog = new();
-            Hide();
+            WindowState = FormWindowState.Minimized;
             dialog.ShowDialog();
-            Show();
+            WindowState = FormWindowState.Normal;
         }
         #endregion
 
@@ -379,5 +380,16 @@ namespace DailyTasks.Forms
         }
 
         #endregion
+
+        //Keep window on top always
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= 8;  // Turn on WS_EX_TOPMOST
+                return cp;
+            }
+        }
     }
 }
