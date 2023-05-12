@@ -227,6 +227,16 @@ namespace DailyTasks.Forms.Classes
                 .OrderBy(g => g.Key)!;
         }
 
+        public static IEnumerable<(string Title, int TotalOK)> TotalOKByTitle(string filename)
+        {
+            DailyTask[] tasks = Deserialize(filename);
+            return tasks
+                .Where(t => t.StartTime.HasValue && t.StartTime.Value.Date == DateTime.Today)
+                .GroupBy(t => t.Title)
+                .Select(g => (g.Key, g.Sum(t => t.totalAmount - t.ScrapNG + t.otherNG) ?? 0))
+                .OrderBy(g => g.Key)!;
+        }
+
         public static IEnumerable<(string Title, int TotalNG)> TotalNGByTitle(string filename)
         {
             DailyTask[] tasks = Deserialize(filename);
