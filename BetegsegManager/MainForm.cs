@@ -2,6 +2,7 @@ using System.Text;
 using DailyTasks.Forms.Forms;
 using DailyTasks.Notification;
 using DailyTasks.Forms.Classes;
+using System.Runtime.InteropServices;
 
 namespace DailyTasks.Forms
 {
@@ -12,7 +13,7 @@ namespace DailyTasks.Forms
         FileSystemWatcher watcher2 = new();
 
         readonly string MainFolder = $"Daily Tasks/";
-        readonly string MainFile = $"Daily Tasks/Daily Tasks.csv";
+        readonly string MainFile = $"Daily Tasks/Daily Tasks - {Properties.Settings.Default.Username}.csv";
         readonly string ImageFolder = $"Daily Tasks/Images/";
         readonly string UsersFile = $"Daily Tasks/Users.txt";
 
@@ -129,12 +130,14 @@ namespace DailyTasks.Forms
                 MainListBox.Items.Clear();
                 MainDataGridView.Rows.Clear();
 
-                var totalSumByTitle = DailyTask.TotalSumByTitle(MainFile);
-                var scrapDoubleByTitle = DailyTask.ScrapDoubleByTitle(MainFile);
-                var otherNGSByTitle = DailyTask.OtherNGSByTitle(MainFile);
-                var notFinishedByTitle = DailyTask.NotFinishedByTitle(MainFile);
-                var totalOKByTitle = DailyTask.TotalOKByTitle(MainFile);
-                var totalNGByTitle = DailyTask.TotalNGByTitle(MainFile);
+                DailyTask[] tasks = DailyTask.Deserialize(MainFile);
+
+                var totalSumByTitle = DailyTask.TotalSumByTitle(tasks);
+                var scrapDoubleByTitle = DailyTask.ScrapDoubleByTitle(tasks);
+                var otherNGSByTitle = DailyTask.OtherNGSByTitle(tasks);
+                var notFinishedByTitle = DailyTask.NotFinishedByTitle(tasks);
+                var totalOKByTitle = DailyTask.TotalOKByTitle(tasks);
+                var totalNGByTitle = DailyTask.TotalNGByTitle(tasks);
 
                 foreach (var (Title, TotalSum) in totalSumByTitle)
                 {
@@ -165,6 +168,7 @@ namespace DailyTasks.Forms
             CurrentUserLabel.Text = (sender! as ToolStripItem)!.Text;
             Properties.Settings.Default.Username = CurrentUserLabel.Text;
             Properties.Settings.Default.Save();
+            Application.Restart();
         }
 
         private void NewUserToolStripMenuItem_Click(object sender, EventArgs e)
@@ -173,9 +177,10 @@ namespace DailyTasks.Forms
             if (form.ShowDialog() == DialogResult.OK)
             {
                 UsersToolStripMenuItem.DropDownItems.Add(form.User!.UserName);
-                StreamWriter writer = new(UsersFile, true, Encoding.UTF8);
-                writer.WriteLine(form.User.CSVFormat());
-                writer.Close();
+                using (StreamWriter writer = new(UsersFile, true, Encoding.UTF8))
+                {
+                    writer.WriteLine(form.User.CSVFormat());
+                }
                 Application.Restart();
             }
         }
@@ -252,6 +257,7 @@ namespace DailyTasks.Forms
         {
             CopyClipboard dialog = new();
             WindowState = FormWindowState.Minimized;
+            dialog.Owner = this;
             dialog.ShowDialog();
             WindowState = FormWindowState.Normal;
         }
@@ -382,14 +388,30 @@ namespace DailyTasks.Forms
         #endregion
 
         //Keep window on top always
-        protected override CreateParams CreateParams
+
+        #region On top function
+
+        [DllImport("user32.dll")]
+        static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
+        const uint SWP_NOMOVE = 0x0002;
+        const uint SWP_NOSIZE = 0x0001;
+
+        private void AlwaysOnTopCheckBox_CheckedChanged(object sender, EventArgs e)
         {
-            get
+            if (AlwaysOnTopCheckBox.Checked)
             {
-                var cp = base.CreateParams;
-                cp.ExStyle |= 8;  // Turn on WS_EX_TOPMOST
-                return cp;
+                // Turn on WS_EX_TOPMOST
+                SetWindowPos(Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            }
+            else
+            {
+                // Turn off WS_EX_TOPMOST
+                SetWindowPos(Handle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
             }
         }
+        #endregion
     }
 }
