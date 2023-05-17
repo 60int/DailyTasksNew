@@ -194,7 +194,8 @@ namespace DailyTasks.Forms
             CurrentUserLabel.Text = (sender! as ToolStripItem)!.Text;
             Properties.Settings.Default.Username = CurrentUserLabel.Text;
             Properties.Settings.Default.Save();
-            Application.Restart();
+
+            RefreshListBox();
         }
 
         private void NewUserToolStripMenuItem_Click(object sender, EventArgs e)
@@ -202,12 +203,21 @@ namespace DailyTasks.Forms
             AddUserForm form = new();
             if (form.ShowDialog() == DialogResult.OK)
             {
-                UsersToolStripMenuItem.DropDownItems.Add(form.User!.UserName);
+                // Create a new ToolStripItem for the new user
+                ToolStripItem newUserItem = new ToolStripMenuItem(form.User!.UserName);
+
+                // Attach the UserItem_Click event handler to the new ToolStripItem
+                newUserItem.Click += UserItem_Click;
+
+                // Add the new ToolStripItem to the UsersToolStripMenuItem
+                UsersToolStripMenuItem.DropDownItems.Add(newUserItem);
+
                 using (StreamWriter writer = new(UsersFile, true, Encoding.UTF8))
                 {
                     writer.WriteLine(form.User.CSVFormat());
                 }
-                Application.Restart();
+
+                // No need to restart the application
             }
         }
 
