@@ -10,7 +10,7 @@ namespace DailyTasks.Forms
     {
         #region Initialize/Data
 
-        FileSystemWatcher watcher2 = new();
+        FileSystemWatcher watcher = new();
 
         readonly string MainFolder = $"Daily Tasks/";
         readonly string MainFile = $"Daily Tasks/Daily Tasks - {Properties.Settings.Default.Username}.csv";
@@ -44,36 +44,35 @@ namespace DailyTasks.Forms
         public MainForm()
         {
             InitializeComponent();
+            InitializeDataGridView();
             FileToolStripMenuItem.ForeColor = Light;
             ClipboardToolStripMenuItem.ForeColor = Light;
             CurrentUserLabel.Text = Properties.Settings.Default.Username;
-            InitializeDataGridView();
         }
 
         private void MainForm_Load(object sender, EventArgs e)
         {
             try
             {
-                string[] directories = { MainFolder, ImageFolder };
-                foreach (string directory in directories)
+                try
                 {
-                    if (!Directory.Exists(directory))
+                    string[] directories = { MainFolder, ImageFolder };
+                    foreach (string directory in directories)
                     {
-                        Directory.CreateDirectory(directory);
+                        if (!Directory.Exists(directory))
+                        {
+                            Directory.CreateDirectory(directory);
+                        }
                     }
                 }
-                watcher2 = new FileSystemWatcher
+                catch (Exception ex)
                 {
-                    Path = ImageFolder,
-                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size,
-                    Filter = "*.jpg"
-                };
-                watcher2.Created += new FileSystemEventHandler(OnImageCreated);
-                watcher2.EnableRaisingEvents = true;
-                if (File.Exists(MainFile))
-                {
-                    RefreshListBox();
+                    MessageBox.Show("An error occurred while creating directories: " + ex.Message);
                 }
+
+                CreateFileSystemWatcher();
+
+                RefreshListBox();
 
                 if (File.Exists(UsersFile))
                 {
@@ -111,6 +110,18 @@ namespace DailyTasks.Forms
             }
         }
 
+        private void CreateFileSystemWatcher()
+        {
+            watcher = new FileSystemWatcher
+            {
+                Path = ImageFolder,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size,
+                Filter = "*.jpg"
+            };
+            watcher.Created += new FileSystemEventHandler(OnImageCreated);
+            watcher.EnableRaisingEvents = true;
+        }
+
         void InitializeDataGridView()
         {
             MainDataGridView.AutoGenerateColumns = false;
@@ -125,41 +136,56 @@ namespace DailyTasks.Forms
 
         void RefreshListBox()
         {
-            try
+            MainListBox.Items.Clear();
+            MainDataGridView.Rows.Clear();
+
+            List<DailyTask> allTasks = new();
+            if (CurrentUserLabel.Text == "Default")
             {
-                MainListBox.Items.Clear();
-                MainDataGridView.Rows.Clear();
-
-                DailyTask[] tasks = DailyTask.Deserialize(MainFile);
-
-                var totalSumByTitle = DailyTask.TotalSumByTitle(tasks);
-                var scrapDoubleByTitle = DailyTask.ScrapDoubleByTitle(tasks);
-                var otherNGSByTitle = DailyTask.OtherNGSByTitle(tasks);
-                var notFinishedByTitle = DailyTask.NotFinishedByTitle(tasks);
-                var totalOKByTitle = DailyTask.TotalOKByTitle(tasks);
-                var totalNGByTitle = DailyTask.TotalNGByTitle(tasks);
-
-                foreach (var (Title, TotalSum) in totalSumByTitle)
+                // Load data from multiple CSV files
+                string dailyTasksDirectory = Path.Combine(MainFolder, "Daily Tasks");
+                string[] filePaths = Directory.GetFiles(MainFolder, "*.csv");
+                foreach (string filePath in filePaths)
                 {
-                    string title = Title;
-                    int totalSum = TotalSum;
-                    int scrapDouble = scrapDoubleByTitle.FirstOrDefault(g => g.Title == title).ScrapDouble;
-                    int otherNGS = otherNGSByTitle.FirstOrDefault(g => g.Title == title).OtherNGS;
-                    int notFinished = notFinishedByTitle.FirstOrDefault(g => g.Title == title).NotFinished;
-                    int totalOK = totalOKByTitle.FirstOrDefault(g => g.Title == title).TotalOK;
-                    int totalNG = totalNGByTitle.FirstOrDefault(g => g.Title == title).TotalNG;
-
-                    MainDataGridView.Rows.Add(title, totalSum, scrapDouble, otherNGS, notFinished, totalOK, totalNG);
-                }
-
-                foreach (DailyTask item in DailyTask.Deserialize(MainFile))
-                {
-                    MainListBox.Items.Add(item);
+                    allTasks.AddRange(DailyTask.Deserialize(filePath));
                 }
             }
-            catch (Exception ex)
+            else
             {
-                throw new ArgumentException("ListBox can't be refreshed at this time.", "Error", ex);
+                // Check if the file exists
+                if (!File.Exists(MainFile))
+                {
+                    // Create the file if it doesn't exist
+                    using FileStream fs = File.Create(MainFile);
+                }
+
+                // Load data from a single CSV file
+                allTasks.AddRange(DailyTask.Deserialize(MainFile));
+            }
+
+            var totalSumByTitle = DailyTask.TotalSumByTitle(allTasks.ToArray());
+            var scrapDoubleByTitle = DailyTask.ScrapDoubleByTitle(allTasks.ToArray());
+            var otherNGSByTitle = DailyTask.OtherNGSByTitle(allTasks.ToArray());
+            var notFinishedByTitle = DailyTask.NotFinishedByTitle(allTasks.ToArray());
+            var totalOKByTitle = DailyTask.TotalOKByTitle(allTasks.ToArray());
+            var totalNGByTitle = DailyTask.TotalNGByTitle(allTasks.ToArray());
+
+            foreach (var (Title, TotalSum) in totalSumByTitle)
+            {
+                string title = Title;
+                int totalSum = TotalSum;
+                int scrapDouble = scrapDoubleByTitle.FirstOrDefault(g => g.Title == title).ScrapDouble;
+                int otherNGS = otherNGSByTitle.FirstOrDefault(g => g.Title == title).OtherNGS;
+                int notFinished = notFinishedByTitle.FirstOrDefault(g => g.Title == title).NotFinished;
+                int totalOK = totalOKByTitle.FirstOrDefault(g => g.Title == title).TotalOK;
+                int totalNG = totalNGByTitle.FirstOrDefault(g => g.Title == title).TotalNG;
+
+                MainDataGridView.Rows.Add(title, totalSum, scrapDouble, otherNGS, notFinished, totalOK, totalNG);
+            }
+
+            foreach (DailyTask item in allTasks)
+            {
+                MainListBox.Items.Add(item);
             }
         }
 
@@ -283,7 +309,7 @@ namespace DailyTasks.Forms
         {
             try
             {
-                watcher2.EnableRaisingEvents = false;
+                watcher.EnableRaisingEvents = false;
 
                 Thread procThread3 = new(Process);
 
@@ -291,7 +317,7 @@ namespace DailyTasks.Forms
             }
             finally
             {
-                watcher2.EnableRaisingEvents = true;
+                watcher.EnableRaisingEvents = true;
             }
 
         }
