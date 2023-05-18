@@ -110,6 +110,36 @@ namespace DailyTasks.Forms
             }
         }
 
+        List<DailyTask> LoadDataFromCsvFiles()
+        {
+            List<DailyTask> allTasks = new();
+
+            if (CurrentUserLabel.Text == "Default")
+            {
+                // Load data from multiple CSV files
+                string[] filePaths = Directory.GetFiles(MainFolder, "*.csv");
+
+                foreach (string filePath in filePaths)
+                {
+                    allTasks.AddRange(DailyTask.Deserialize(filePath));
+                }
+            }
+            else
+            {
+                // Check if the file exists
+                if (!File.Exists(MainFile))
+                {
+                    // Create the file if it doesn't exist
+                    using FileStream fs = File.Create(MainFile);
+                }
+
+                // Load data from a single CSV file
+                allTasks.AddRange(DailyTask.Deserialize(MainFile));
+            }
+
+            return allTasks;
+        }
+
         private void CreateFileSystemWatcher()
         {
             watcher = new FileSystemWatcher
@@ -125,17 +155,96 @@ namespace DailyTasks.Forms
         void InitializeDataGridView()
         {
             MainDataGridView.AutoGenerateColumns = false;
+            MainDataGridView.Columns.Add("Day of the Week", "Day Of Week");
             MainDataGridView.Columns.Add("Title", "User");
             MainDataGridView.Columns.Add("TotalSum", "Total Sum");
-            MainDataGridView.Columns.Add("ScrapDouble", "Scrap/Double");
-            MainDataGridView.Columns.Add("OtherNGS", "Other NG");
             MainDataGridView.Columns.Add("NotFinished", "Not Finished");
             MainDataGridView.Columns.Add("TotalOK", "Total OK");
             MainDataGridView.Columns.Add("TotalNG", "Total NG");
+            MainDataGridView.Columns.Add("Task Type", "TaskType");
         }
 
         void RefreshListBox()
         {
+            // Clear MainDataGridView on first working day of the week
+            if (DateTime.Today.DayOfWeek == DayOfWeek.Monday)
+            {
+                MainDataGridView.Rows.Clear();
+            }
+
+            MainListBox.Items.Clear();
+            MainDataGridView.Rows.Clear();
+
+            // Load data from CSV files
+            List<DailyTask> allTasks = LoadDataFromCsvFiles();
+
+            // Calculate total sum, not finished, total OK and total NG by title
+            var totalSumByTitle = DailyTask.TotalSumByTitle(allTasks.ToArray());
+            var notFinishedByTitle = DailyTask.NotFinishedByTitle(allTasks.ToArray());
+            var totalOKByTitle = DailyTask.TotalOKByTitle(allTasks.ToArray());
+            var totalNGByTitle = DailyTask.TotalNGByTitle(allTasks.ToArray());
+
+            // Group tasks by date and title
+            var tasksGroupedByDateAndTitle = allTasks.GroupBy(t => new { t.StartTime!.Value.Date, t.Title });
+
+            // Add a row for each group
+            foreach (var group in tasksGroupedByDateAndTitle)
+            {
+                string date = group.Key.Date.ToString("d");
+                string title = group.Key.Title!;
+                int totalSum = group.Sum(t => t.TotalAmount) ?? 0;
+                int notFinished = group.Sum(t => t.AmountLeft) ?? 0;
+                int totalOK = group.Sum(t => t.TotalAmount - (t.ScrapNG + t.OtherNG)) ?? 0;
+                int totalNG = group.Sum(t => t.ScrapNG + t.OtherNG) ?? 0;
+                string taskType = group.First().TaskType.ToString();
+
+                MainDataGridView.Rows.Add(date, title, totalSum, notFinished, totalOK, totalNG, taskType);
+            }
+
+            foreach (DailyTask item in allTasks)
+            {
+                MainListBox.Items.Add(item);
+            }
+        }
+
+        private void UserItem_Click(object? sender, EventArgs e)
+        {
+            CurrentUserLabel.Text = (sender! as ToolStripItem)!.Text;
+            Properties.Settings.Default.Username = CurrentUserLabel.Text;
+            Properties.Settings.Default.Save();
+
+            RefreshListBox();
+            Application.Restart();
+        }
+
+        private void NewUserToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            AddUserForm form = new();
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                // Create a new ToolStripItem for the new user
+                ToolStripItem newUserItem = new ToolStripMenuItem(form.User!.UserName);
+
+                // Attach the UserItem_Click event handler to the new ToolStripItem
+                newUserItem.Click += UserItem_Click;
+
+                // Add the new ToolStripItem to the UsersToolStripMenuItem
+                UsersToolStripMenuItem.DropDownItems.Add(newUserItem);
+
+                using (StreamWriter writer = new(UsersFile, true, Encoding.UTF8))
+                {
+                    writer.WriteLine(form.User.CSVFormat());
+                }
+
+                // No need to restart the application
+            }
+        }
+
+        private void MainDateTimePicker_ValueChanged(object sender, EventArgs e)
+        {
+            // Get the selected date
+            DateTime selectedDate = MainDateTimePicker.Value;
+
             MainListBox.Items.Clear();
             MainDataGridView.Rows.Clear();
 
@@ -164,60 +273,33 @@ namespace DailyTasks.Forms
             }
 
             var totalSumByTitle = DailyTask.TotalSumByTitle(allTasks.ToArray());
-            var scrapDoubleByTitle = DailyTask.ScrapDoubleByTitle(allTasks.ToArray());
-            var otherNGSByTitle = DailyTask.OtherNGSByTitle(allTasks.ToArray());
             var notFinishedByTitle = DailyTask.NotFinishedByTitle(allTasks.ToArray());
             var totalOKByTitle = DailyTask.TotalOKByTitle(allTasks.ToArray());
             var totalNGByTitle = DailyTask.TotalNGByTitle(allTasks.ToArray());
 
-            foreach (var (Title, TotalSum) in totalSumByTitle)
-            {
-                string title = Title;
-                int totalSum = TotalSum;
-                int scrapDouble = scrapDoubleByTitle.FirstOrDefault(g => g.Title == title).ScrapDouble;
-                int otherNGS = otherNGSByTitle.FirstOrDefault(g => g.Title == title).OtherNGS;
-                int notFinished = notFinishedByTitle.FirstOrDefault(g => g.Title == title).NotFinished;
-                int totalOK = totalOKByTitle.FirstOrDefault(g => g.Title == title).TotalOK;
-                int totalNG = totalNGByTitle.FirstOrDefault(g => g.Title == title).TotalNG;
+            // Filter tasks by selected date
+            var tasksBySelectedDate = allTasks.Where(t => t.StartTime.HasValue && t.StartTime.Value.Date == selectedDate.Date);
 
-                MainDataGridView.Rows.Add(title, totalSum, scrapDouble, otherNGS, notFinished, totalOK, totalNG);
+            // Group tasks by date and title
+            var tasksGroupedByDateAndTitle = tasksBySelectedDate.GroupBy(t => new { t.StartTime!.Value.Date, t.Title });
+
+            // Add a row for each group
+            foreach (var group in tasksGroupedByDateAndTitle)
+            {
+                string date = group.Key.Date.ToString("d");
+                string title = group.Key.Title!;
+                int totalSum = group.Sum(t => t.TotalAmount) ?? 0;
+                int notFinished = group.Sum(t => t.AmountLeft) ?? 0;
+                int totalOK = group.Sum(t => t.TotalAmount - (t.ScrapNG + t.OtherNG)) ?? 0;
+                int totalNG = group.Sum(t => t.ScrapNG + t.OtherNG) ?? 0;
+                string taskType = group.First().TaskType.ToString();
+
+                MainDataGridView.Rows.Add(date, title, totalSum, notFinished, totalOK, totalNG, taskType);
             }
 
             foreach (DailyTask item in allTasks)
             {
                 MainListBox.Items.Add(item);
-            }
-        }
-
-        private void UserItem_Click(object? sender, EventArgs e)
-        {
-            CurrentUserLabel.Text = (sender! as ToolStripItem)!.Text;
-            Properties.Settings.Default.Username = CurrentUserLabel.Text;
-            Properties.Settings.Default.Save();
-
-            RefreshListBox();
-        }
-
-        private void NewUserToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            AddUserForm form = new();
-            if (form.ShowDialog() == DialogResult.OK)
-            {
-                // Create a new ToolStripItem for the new user
-                ToolStripItem newUserItem = new ToolStripMenuItem(form.User!.UserName);
-
-                // Attach the UserItem_Click event handler to the new ToolStripItem
-                newUserItem.Click += UserItem_Click;
-
-                // Add the new ToolStripItem to the UsersToolStripMenuItem
-                UsersToolStripMenuItem.DropDownItems.Add(newUserItem);
-
-                using (StreamWriter writer = new(UsersFile, true, Encoding.UTF8))
-                {
-                    writer.WriteLine(form.User.CSVFormat());
-                }
-
-                // No need to restart the application
             }
         }
 
@@ -303,7 +385,6 @@ namespace DailyTasks.Forms
 
         private delegate void UpdateImageDelegate(string alert);
 
-
         private void ImageAlert(string alert)
         {
             if (ShareImageLabel.InvokeRequired)
@@ -314,7 +395,7 @@ namespace DailyTasks.Forms
 
             Alert.ShowInformation(alert, 5000);
         }
-        
+
         private void OnImageCreated(object sender, FileSystemEventArgs e)
         {
             try
@@ -350,9 +431,6 @@ namespace DailyTasks.Forms
             ImageAlert(alert);
         }
 
-
-        #endregion
-
         private void ShareImageButton_Click(object sender, EventArgs e)
         {
             if (Clipboard.GetDataObject() != null)
@@ -383,7 +461,15 @@ namespace DailyTasks.Forms
             }
         }
 
+        #endregion
+
         #region Visuals
+
+        private void ShowAllButton_Click(object sender, EventArgs e)
+        {
+            RefreshListBox();
+        }
+
         private void ShareImageTimer_Tick(object sender, EventArgs e)
         {
             ShareImageTimer.Stop();
@@ -425,7 +511,7 @@ namespace DailyTasks.Forms
 
         //Keep window on top always
 
-        #region On top function
+        #region Window always on top function
 
         [DllImport("user32.dll")]
         static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
@@ -449,5 +535,6 @@ namespace DailyTasks.Forms
             }
         }
         #endregion
+
     }
 }
