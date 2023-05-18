@@ -178,70 +178,58 @@ namespace DailyTasks.Forms.Classes
         public static DailyTask[] Deserialize(string filename)
         {
             string[] lines = File.ReadAllLines(filename, Encoding.UTF8).Skip(1).ToArray();
-            DailyTask[] tasks = new DailyTask[lines.Length];
+            List<DailyTask> tasks = new();
             for (int i = 0; i < lines.Length; i++)
             {
                 string[] line = lines[i].Split(',');
-                tasks[i] = new DailyTask(line[0], int.Parse(line[1]), int.Parse(line[2]), int.Parse(line[3]), int.Parse(line[4]), int.Parse(line[5]), bool.Parse(line[6]), DateTime.Parse(line[7]), (TaskType)int.Parse(line[8]), (TaskPriority)int.Parse(line[9]));
+                tasks.Add(new DailyTask(line[0], int.Parse(line[1]), int.Parse(line[2]), int.Parse(line[3]), int.Parse(line[4]), int.Parse(line[5]), bool.Parse(line[6]), DateTime.Parse(line[7]), (TaskType)int.Parse(line[8]), (TaskPriority)int.Parse(line[9])));
             }
-            return tasks;
+            return tasks.ToArray();
         }
 
-        public static IEnumerable<(string Title, int TotalSum)> TotalSumByTitle(string filename)
+        public static IEnumerable<(string Title, int TotalSum)> TotalSumByTitle(DailyTask[] tasks)
         {
-            DailyTask[] tasks = Deserialize(filename);
             return tasks
-                .Where(t => t.StartTime.HasValue && t.StartTime.Value.Date == DateTime.Today)
                 .GroupBy(t => t.Title)
                 .Select(g => (g.Key, g.Sum(t => t.totalAmount) ?? 0))
                 .OrderBy(g => g.Key)!;
         }
 
-        public static IEnumerable<(string Title, int ScrapDouble)> ScrapDoubleByTitle(string filename)
+        public static IEnumerable<(string Title, int ScrapDouble)> ScrapDoubleByTitle(DailyTask[] tasks)
         {
-            DailyTask[] tasks = Deserialize(filename);
             return tasks
-                .Where(t => t.StartTime.HasValue && t.StartTime.Value.Date == DateTime.Today)
                 .GroupBy(t => t.Title)
                 .Select(g => (g.Key, g.Sum(t => t.scrapNG) ?? 0))
                 .OrderBy(g => g.Key)!;
         }
 
-        public static IEnumerable<(string Title, int OtherNGS)> OtherNGSByTitle(string filename)
+        public static IEnumerable<(string Title, int OtherNGS)> OtherNGSByTitle(DailyTask[] tasks)
         {
-            DailyTask[] tasks = Deserialize(filename);
             return tasks
-                .Where(t => t.StartTime.HasValue && t.StartTime.Value.Date == DateTime.Today)
                 .GroupBy(t => t.Title)
                 .Select(g => (g.Key, g.Sum(t => t.otherNG) ?? 0))
                 .OrderBy(g => g.Key)!;
         }
 
-        public static IEnumerable<(string Title, int NotFinished)> NotFinishedByTitle(string filename)
+        public static IEnumerable<(string Title, int NotFinished)> NotFinishedByTitle(DailyTask[] tasks)
         {
-            DailyTask[] tasks = Deserialize(filename);
             return tasks
-                .Where(t => t.StartTime.HasValue && t.StartTime.Value.Date == DateTime.Today)
                 .GroupBy(t => t.Title)
                 .Select(g => (g.Key, g.Sum(t => t.amountLeft) ?? 0))
                 .OrderBy(g => g.Key)!;
         }
 
-        public static IEnumerable<(string Title, int TotalOK)> TotalOKByTitle(string filename)
+        public static IEnumerable<(string Title, int TotalOK)> TotalOKByTitle(DailyTask[] tasks)
         {
-            DailyTask[] tasks = Deserialize(filename);
             return tasks
-                .Where(t => t.StartTime.HasValue && t.StartTime.Value.Date == DateTime.Today)
                 .GroupBy(t => t.Title)
-                .Select(g => (g.Key, g.Sum(t => t.totalAmount - t.ScrapNG + t.otherNG) ?? 0))
+                .Select(g => (g.Key, g.Sum(t => t.totalAmount - (t.ScrapNG + t.otherNG)) ?? 0))
                 .OrderBy(g => g.Key)!;
         }
 
-        public static IEnumerable<(string Title, int TotalNG)> TotalNGByTitle(string filename)
+        public static IEnumerable<(string Title, int TotalNG)> TotalNGByTitle(DailyTask[] tasks)
         {
-            DailyTask[] tasks = Deserialize(filename);
             return tasks
-                .Where(t => t.StartTime.HasValue && t.StartTime.Value.Date == DateTime.Today)
                 .GroupBy(t => t.Title)
                 .Select(g => (g.Key, g.Sum(t => t.ScrapNG + t.otherNG) ?? 0))
                 .OrderBy(g => g.Key)!;
